@@ -1,0 +1,865 @@
+import React, { useState, useEffect, useCallback } from "react";
+
+/* ============================================================
+   WILDSIGHT — testable prototype
+   Simulates the full guest journey at a Mandai interpretive.
+   Everything is local + offline. No network, no storage, no cameras.
+   ============================================================ */
+
+const T = {
+  shell: "#E9EDE6",
+  surface: "#FFFFFF",
+  canopy: "#14261C",
+  canopyMid: "#1E3628",
+  moss: "#54826A",
+  mossPale: "#DDE7DE",
+  signal: "#DE9B33",
+  ink: "#16241C",
+  inkMuted: "#5A6B60",
+  line: "#D3DBD0",
+  dim: "#0A130E",
+};
+
+const F = {
+  display: "Georgia, 'Times New Roman', serif",
+  ui: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  mono: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+};
+
+const AGES = [
+  { id: "cub", label: "Cub", sub: "4–7" },
+  { id: "junior", label: "Junior Ranger", sub: "8–12" },
+  { id: "teen", label: "Teen", sub: "13–17" },
+  { id: "adult", label: "Adult", sub: "18–64" },
+  { id: "senior", label: "Senior", sub: "65+" },
+];
+
+const INTERESTS = [
+  { id: "storyteller", label: "Stories" },
+  { id: "scientist", label: "How it works" },
+  { id: "photographer", label: "Photos" },
+  { id: "carer", label: "Caring for animals" },
+  { id: "doer", label: "What I can do" },
+];
+
+/* ---------------- approved corpus (the only facts the app may say) ---------------- */
+
+const EXHIBITS = [
+  {
+    id: "OU2",
+    animal: "Charlie",
+    species: "Sumatran orangutan",
+    place: "Orangutan Hut · puzzle feeder",
+    seedQuestion: "Charlie can pick a lock. Should we let him?",
+    quiet:
+      "Charlie is resting off-show this morning. His keepers have paused missions here. Look for the nest platform above the left rail — he built it himself.",
+    mission: {
+      cub: "Charlie has a puzzle, just like you. Watch his hands. Can you find the stick?",
+      junior: "Charlie solves this in about 40 seconds. Watch his hands — which one leads?",
+      teen: "Watch his hands for 30 seconds. Which hand leads when he works the tool?",
+      adult: "Watch his hands for 30 seconds. Which hand does he lead with?",
+      senior: "Take your time. Watch his hands. Which hand leads?",
+    },
+    options: [
+      { id: "left", label: "Left hand", code: "TOOL-L" },
+      { id: "right", label: "Right hand", code: "TOOL-R" },
+      { id: "rest", label: "He's resting", code: "REST" },
+      { id: "novis", label: "Can't see him", code: "NOVIS" },
+    ],
+    finding: {
+      left: "Left. Same as 68% of guests today. Charlie leads with his left hand.",
+      right: "Right — less common. Only 32% logged right today. Worth a second look.",
+      rest: "Rest logged. Orangutans nest and rest up to 12 hours a day. That is real data, not a miss.",
+      novis: "No sighting logged. That is useful too — it tells his keepers when he is out of view.",
+    },
+    science: {
+      cub: "Using a stick to reach food is called using a tool. Charlie taught himself.",
+      junior: "This is extractive foraging — using a tool to reach food you cannot grab. Nobody taught him.",
+      teen: "This is extractive foraging. Wild Sumatran orangutans use up to 54 distinct tool behaviours. Charlie was never taught this one.",
+      adult: "Extractive foraging — using a tool to reach food. Wild Sumatran orangutans use up to 54 distinct tool behaviours.",
+      senior: "Enrichment is not a trick for visitors. It is how his keepers protect his mind.",
+    },
+    angle: {
+      storyteller: "He has worked this puzzle since he was twelve. His keepers have watched him change how he solves it.",
+      scientist: "Hand preference is individual, not species-wide. It is one of the few traits you can measure from a rail.",
+      photographer: "Enrichment goes out around 10:30 and 15:00. North end of the rail, backlight through the canopy. No flash.",
+      carer: "Every puzzle he solves is a day his mind stayed busy. That is what the enrichment schedule is for.",
+      doer: "Try the puzzle on the panel below. Time yourself. Then watch how he does it differently.",
+    },
+    connect:
+      "Charlie is about 45. His keeper of nine years says he stops mid-puzzle to check who is watching.",
+    cta: "Two exhibits on, at the shop case: open your bag and find one item with palm oil. We will tell you if it is certified.",
+    ctaDone: "Logged. Last month 1,340 guests checked. 41% told us they did.",
+    next: "Two exhibits away, Bongsu is usually most active now.",
+    ids: ["OU2-FACT-003", "OU2-FACT-007", "OU2-FACT-011", "OU2-BEAT-002"],
+    zh: {
+      mission: {
+        cub: "查理有一个益智玩具，就像你一样。看看他的手。你能找到那根小棍子吗？",
+        junior: "查理大约40秒就能解开。看他的双手——哪一只是主导手？",
+        teen: "观察他的双手30秒。他使用工具时，哪只手在主导？",
+        adult: "观察他的双手30秒。他主要用哪只手？",
+        senior: "慢慢来。看看他的手。哪一只手在主导？",
+      },
+      options: { left: "左手", right: "右手", rest: "他在休息", novis: "看不到他" },
+      finding: {
+        left: "左手。今天有68%的访客也是这样记录的。查理以左手为主导手。",
+        right: "右手——比较少见。今天只有32%记录为右手。值得再看一眼。",
+        rest: "已记录休息行为。红毛猩猩每天筑巢休息长达12小时。这是真实数据，不是错过。",
+        novis: "已记录未见到。这同样有用——它让饲养员知道他何时不在视野内。",
+      },
+      science: {
+        cub: "用棍子取食物叫做使用工具。查理是自学的。",
+        junior: "这叫做取食性工具使用——用工具取到抓不到的食物。没有人教过他。",
+        teen: "这叫做取食性工具使用。野生苏门答腊红毛猩猩有多达54种不同的工具行为。查理这一种是自学的。",
+        adult: "取食性工具使用——用工具取食。野生苏门答腊红毛猩猩有多达54种不同的工具行为。",
+        senior: "丰容不是给访客看的把戏。这是饲养员保护他心智的方式。",
+      },
+    },
+  },
+  {
+    id: "OU1",
+    animal: "Charlie",
+    species: "Sumatran orangutan",
+    place: "Orangutan Hut · nest platform",
+    seedQuestion: "He built a nest here every night for nine years. Then he stopped.",
+    quiet:
+      "Missions are paused at this panel while keepers work above the platform. The nest itself is still visible from the left rail.",
+    mission: {
+      cub: "Look up high. Can you find where Charlie sleeps?",
+      junior: "Find the nest platform. Is there anything in it right now?",
+      teen: "Find the nest platform. Is it in use, or has he moved on?",
+      adult: "Look for the nest platform in the canopy. Occupied, or empty?",
+      senior: "Take a moment. Look for the nest platform above. Is anything in it?",
+    },
+    options: [
+      { id: "occ", label: "Something's in it", code: "NEST-OCC" },
+      { id: "emp", label: "It's empty", code: "NEST-EMP" },
+      { id: "bld", label: "He's carrying material", code: "NEST-BLD" },
+      { id: "novis", label: "Can't find it", code: "NOVIS" },
+    ],
+    finding: {
+      occ: "Occupied logged. Nest use is one of the clearest welfare signals keepers track.",
+      emp: "Empty logged. Wild orangutans build a fresh nest most nights and rarely reuse one.",
+      bld: "Nest-building logged — the rarest thing on that list. Keepers will want this one.",
+      novis: "Not found logged. The platform sits high on purpose. That is how he would choose in the wild.",
+    },
+    science: {
+      cub: "Orangutans make a new leaf bed almost every night.",
+      junior: "Wild orangutans build a fresh nest most nights, bending branches into a bowl in under ten minutes.",
+      teen: "Nest-building is socially learned, not instinctive. Orphaned orangutans often have to be taught it before release.",
+      adult: "Nest-building is learned, not instinctive — which is why orphaned orangutans must be taught it before any release.",
+      senior: "A nest is the clearest sign an orangutan feels safe where it is.",
+    },
+    angle: {
+      storyteller: "He changed platforms the year the walkway was rebuilt. His keepers still are not certain why.",
+      scientist: "Nest height and reuse rate are standard welfare indicators in ex-situ orangutan care.",
+      photographer: "Late afternoon backlights the platform. Shoot from the left of the panel, before 17:00.",
+      carer: "Keepers check the nest daily. Where he sleeps tells them more than a health chart does.",
+      doer: "Count the branch layers you can see. Wild nests average three.",
+    },
+    connect:
+      "He arrived in 1994 as a confiscated infant. He learned to nest by watching another female here.",
+    cta: "Orangutan forest is cleared for paper pulp as often as for palm oil. Check one paper product at home this week.",
+    ctaDone: "Logged. We will ask you in 30 days — and tell you the honest follow-through rate either way.",
+    next: "The gharial sandbank is quietest right now. Good time to go.",
+    ids: ["OU1-FACT-002", "OU1-FACT-009", "OU1-BEAT-001"],
+  },
+  {
+    id: "AR16",
+    animal: "the female gharial",
+    species: "Gharial",
+    place: "Reptile Garden · nest bank",
+    seedQuestion: "Fewer than 1,000 are left. She is guarding about forty.",
+    quiet:
+      "The bank is closed to missions while the clutch is monitored. You can still watch from the right-hand rail — quietly.",
+    mission: {
+      cub: "Look at the sand. Can you see the long-nosed crocodile? Point at her nose.",
+      junior: "Watch the sandbank for 30 seconds. Is she near the nest, or in the water?",
+      teen: "Watch the sandbank. Is she holding position near the nest, or in the water?",
+      adult: "Watch the sandbank for 30 seconds. Near the nest, or in the water?",
+      senior: "Take your time. Is she on the sand near the nest, or in the water?",
+    },
+    options: [
+      { id: "guard", label: "Near the nest", code: "GUARD" },
+      { id: "swim", label: "In the water", code: "SWIM" },
+      { id: "bask", label: "Basking away from it", code: "BASK" },
+      { id: "novis", label: "Can't see her", code: "NOVIS" },
+    ],
+    finding: {
+      guard: "Nest guarding logged. Gharials hold the bank for weeks, until the young start calling.",
+      swim: "In water logged. She rarely goes far — gharials are the most aquatic of all crocodilians.",
+      bask: "Basking logged. She warms up on the bank between guarding bouts.",
+      novis: "No sighting logged. She sits low and very still. That is rather the point.",
+    },
+    science: {
+      cub: "The mother listens for her babies. When they squeak under the sand, she comes.",
+      junior: "Gharial mothers listen for hatchlings calling from under the sand, then help them out.",
+      teen: "Gharial parental care runs for weeks past hatching — unusual among reptiles, and a key reason nest-bank loss hits them so hard.",
+      adult: "Parental care continues for weeks after hatching, which is why the loss of nesting sandbanks is so damaging.",
+      senior: "She will stay near this bank for weeks. That patience is what the species needs.",
+    },
+    angle: {
+      storyteller: "This bank was rebuilt twice before she used it. The third design was the one she chose.",
+      scientist: "Nest-bank fidelity limits gharial recovery — suitable sand is rarer than suitable water.",
+      photographer: "Shoot low and wait. She holds still for minutes. Long lens, no flash, from the right rail.",
+      carer: "Keepers rake and re-profile this sand by hand each season so she has somewhere to dig.",
+      doer: "Look for the bulb on the snout. Only males have it — that is how keepers tell them apart at distance.",
+    },
+    connect:
+      "Fewer than 1,000 breeding adults remain in the wild. Every clutch on this bank is counted.",
+    cta: "Sand mining destroys the river banks gharials nest on. Concrete is the driver. Ask where the sand in your next build comes from.",
+    ctaDone: "Logged. It is a slow lever. It is also the honest one.",
+    next: "That is three missions. Your field journal is ready.",
+    ids: ["AR16-FACT-001", "AR16-FACT-004", "AR16-BEAT-003"],
+  },
+];
+
+/* ---------------- small helpers ---------------- */
+
+const fmt = (ms) => {
+  const s = Math.floor(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+};
+
+function Btn({ children, onClick, variant = "primary", small, disabled, style }) {
+  const base = {
+    fontFamily: F.ui,
+    fontSize: small ? 14 : 16,
+    fontWeight: 600,
+    padding: small ? "9px 14px" : "15px 18px",
+    borderRadius: 12,
+    border: "1px solid transparent",
+    cursor: disabled ? "not-allowed" : "pointer",
+    width: "100%",
+    textAlign: "left",
+    lineHeight: 1.35,
+    opacity: disabled ? 0.45 : 1,
+    transition: "transform .12s ease, background .12s ease",
+    ...style,
+  };
+  const looks = {
+    primary: { background: T.canopy, color: "#F3F7F1" },
+    ghost: { background: "transparent", color: T.ink, borderColor: T.line },
+    option: { background: T.surface, color: T.ink, borderColor: T.line },
+    signal: { background: T.signal, color: T.canopy },
+    dark: { background: "#1B2A20", color: "#EAF2E7", borderColor: "#2C4435" },
+  };
+  return (
+    <button className="ws-btn" style={{ ...base, ...looks[variant] }} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  );
+}
+
+function Eyebrow({ children, color = T.moss }) {
+  return (
+    <div style={{ fontFamily: F.mono, fontSize: 10.5, letterSpacing: 1.4, textTransform: "uppercase", color, marginBottom: 10 }}>
+      {children}
+    </div>
+  );
+}
+
+/* ============================================================ */
+
+export default function WildsightPrototype() {
+  const [screen, setScreen] = useState("seed");
+  const [step, setStep] = useState(0);
+  const [exIdx, setExIdx] = useState(0);
+
+  const [guestType, setGuestType] = useState(null); // 'day' | 'member'
+  const [group, setGroup] = useState(null);
+  const [age, setAge] = useState("adult");
+  const [interest, setInterest] = useState("scientist");
+  const [lang, setLang] = useState("en");
+
+  const [window_, setWindow_] = useState(30); // observation seconds
+  const [quiet, setQuiet] = useState(false);
+  const [receipts, setReceipts] = useState(false);
+
+  const [remaining, setRemaining] = useState(30);
+  const [observedMs, setObservedMs] = useState(0);
+  const [report, setReport] = useState(null);
+  const [ctaDone, setCtaDone] = useState(false);
+
+  const [log, setLog] = useState([]);
+  const [credits, setCredits] = useState(0);
+  const [eyesUpMs, setEyesUpMs] = useState(0);
+  const [sessionMs, setSessionMs] = useState(0);
+
+  const ex = EXHIBITS[exIdx];
+  const zh = lang === "zh" && ex.zh;
+
+  const t = {
+    mission: zh ? ex.zh.mission[age] : ex.mission[age],
+    finding: report ? (zh ? ex.zh.finding[report] : ex.finding[report]) : "",
+    science: zh ? ex.zh.science[age] : ex.science[age],
+    optLabel: (o) => (zh ? ex.zh.options[o.id] : o.label),
+  };
+
+  /* session clock — runs once the guest leaves the seed panel */
+  const running = screen !== "seed";
+  useEffect(() => {
+    if (!running) return;
+    const i = setInterval(() => setSessionMs((m) => m + 1000), 1000);
+    return () => clearInterval(i);
+  }, [running]);
+
+  /* observation window */
+  useEffect(() => {
+    if (screen !== "observe") return;
+    setRemaining(window_);
+    setObservedMs(0);
+    const i = setInterval(() => {
+      setObservedMs((m) => m + 250);
+      setEyesUpMs((m) => m + 250);
+      setRemaining((r) => Math.max(0, r - 0.25));
+    }, 250);
+    return () => clearInterval(i);
+  }, [screen, window_]);
+
+  const reset = useCallback(() => {
+    setScreen("seed"); setStep(0); setExIdx(0); setGuestType(null); setGroup(null);
+    setAge("adult"); setInterest("scientist"); setLang("en"); setQuiet(false);
+    setReport(null); setCtaDone(false); setLog([]); setCredits(0);
+    setEyesUpMs(0); setSessionMs(0); setObservedMs(0);
+  }, []);
+
+  const finishMission = () => {
+    const qualified = observedMs >= window_ * 1000 - 400;
+    const opt = ex.options.find((o) => o.id === report);
+    setLog((l) => [...l, {
+      exhibit: ex.id, animal: ex.animal, code: opt.code, label: opt.label,
+      seconds: Math.round(observedMs / 1000), qualified,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    }]);
+    if (qualified) setCredits((c) => c + 1);
+    setScreen("wrap");
+  };
+
+  const nextExhibit = () => {
+    if (exIdx < EXHIBITS.length - 1) {
+      setExIdx(exIdx + 1); setReport(null); setCtaDone(false); setScreen("brief");
+    } else setScreen("journal");
+  };
+
+  const eyesUpPct = sessionMs > 0 ? Math.round((eyesUpMs / sessionMs) * 100) : 0;
+
+  /* ---------------- screens ---------------- */
+
+  const Phone = ({ children, dark }) => (
+    <div style={{
+      width: "100%", maxWidth: 400, background: dark ? T.dim : T.surface,
+      borderRadius: 26, border: `1px solid ${dark ? "#1E3225" : T.line}`,
+      boxShadow: "0 18px 40px rgba(20,38,28,.16)", overflow: "hidden",
+      display: "flex", flexDirection: "column", minHeight: 620,
+      transition: "background .5s ease",
+    }}>{children}</div>
+  );
+
+  const Bar = () => (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      padding: "12px 18px", borderBottom: `1px solid ${T.line}`,
+      fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted, letterSpacing: .6,
+    }}>
+      <span>{ex.id} · {ex.place.split(" · ")[1]}</span>
+      <span style={{ color: T.moss }}>{age}·{interest}·{lang}</span>
+    </div>
+  );
+
+  const Body = ({ children, pad = 22 }) => (
+    <div style={{ padding: pad, display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>{children}</div>
+  );
+
+  let view;
+
+  /* --- SEED PANEL (the physical sign) --- */
+  if (screen === "seed") {
+    view = (
+      <Phone>
+        <div style={{ background: T.canopy, padding: "26px 22px 22px", color: "#EFF4ED" }}>
+          <Eyebrow color={T.signal}>Seed panel · {ex.id} · acrylic A3</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 30, lineHeight: 1.16, fontWeight: 700 }}>
+            {ex.seedQuestion}
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 13, color: "#A9BFB0", marginTop: 14 }}>
+            {ex.animal} · {ex.species} · {ex.place}
+          </div>
+        </div>
+        <Body>
+          <div style={{ fontFamily: F.ui, fontSize: 13.5, color: T.inkMuted, lineHeight: 1.5 }}>
+            The physical panel does the attracting. This is the only place a guest has to be
+            persuaded — 76% never get this far.
+          </div>
+          <Btn onClick={() => { setGuestType("member"); setScreen("welcome"); }}>
+            Tap membership card
+            <div style={{ fontWeight: 400, fontSize: 12.5, opacity: .72, marginTop: 3 }}>
+              RFID · no onboarding · 40% of guests
+            </div>
+          </Btn>
+          <Btn variant="option" onClick={() => { setGuestType("day"); setStep(0); setScreen("onboard"); }}>
+            Tap phone here
+            <div style={{ fontWeight: 400, fontSize: 12.5, color: T.inkMuted, marginTop: 3 }}>
+              NFC · no install · day guest
+            </div>
+          </Btn>
+          <Btn variant="option" small onClick={() => { setGuestType("day"); setStep(0); setScreen("onboard"); }}>
+            Scan QR instead
+          </Btn>
+          <div style={{ marginTop: "auto", paddingTop: 14, borderTop: `1px dashed ${T.line}`, fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted, lineHeight: 1.6 }}>
+            No camera. No location. No account.
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- ONBOARDING: three taps --- */
+  else if (screen === "onboard") {
+    const steps = [
+      {
+        q: "Who's exploring?",
+        opts: [["Just me", "solo"], ["With kids", "kids"], ["With family or friends", "family"], ["School group", "school"]],
+        set: (v) => { setGroup(v); },
+      },
+      {
+        q: "Who's in your group?",
+        hint: "Pick the youngest — the script is written for them, with a layer for you.",
+        opts: AGES.map((a) => [`${a.label} · ${a.sub}`, a.id]),
+        set: (v) => setAge(v),
+      },
+      {
+        q: "What pulls you in?",
+        opts: INTERESTS.map((i) => [i.label, i.id]),
+        set: (v) => setInterest(v),
+      },
+    ];
+    const s = steps[step];
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow>Step {step + 1} of 3</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 26, lineHeight: 1.2, color: T.ink, fontWeight: 700 }}>{s.q}</div>
+          {s.hint && <div style={{ fontFamily: F.ui, fontSize: 13, color: T.inkMuted, lineHeight: 1.5 }}>{s.hint}</div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 4 }}>
+            {s.opts.map(([label, val]) => (
+              <Btn key={val} variant="option" onClick={() => {
+                s.set(val);
+                if (step < 2) setStep(step + 1); else setScreen("brief");
+              }}>{label}</Btn>
+            ))}
+          </div>
+          <div style={{ marginTop: "auto", fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted }}>
+            No forms. No sign-up. Nothing stored about a child.
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- MEMBER WELCOME --- */
+  else if (screen === "welcome") {
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow color={T.signal}>Friends of Mandai · visit 4</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 26, lineHeight: 1.22, color: T.ink, fontWeight: 700 }}>
+            Welcome back.
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 15, color: T.ink, lineHeight: 1.55 }}>
+            Last October you spent longest at the gharials. Since then, the nest hatched.
+          </div>
+          <div style={{ background: T.mossPale, borderRadius: 12, padding: 15, fontFamily: F.ui, fontSize: 13.5, color: T.ink, lineHeight: 1.5 }}>
+            Lens resolved from your profile — no onboarding needed.
+            <div style={{ fontFamily: F.mono, fontSize: 11, color: T.moss, marginTop: 8 }}>
+              {AGES.find((a) => a.id === age).label} · {INTERESTS.find((i) => i.id === interest).label} · {lang.toUpperCase()} · 2 credits carried over
+            </div>
+          </div>
+          <Btn onClick={() => { setCredits(2); setScreen("brief"); }}>Start today's fieldwork</Btn>
+          <div style={{ marginTop: "auto", fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted, lineHeight: 1.6 }}>
+            Read from membership API: language, family ages, visit dates. Nothing else.
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- QUIET MODE --- */
+  else if (quiet && ["brief", "observe", "report", "unlock", "connect", "act"].includes(screen)) {
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow color={T.signal}>Quiet mode · keeper toggled</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 24, lineHeight: 1.25, color: T.ink, fontWeight: 700 }}>
+            Missions are paused here.
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 15, color: T.ink, lineHeight: 1.55 }}>{ex.quiet}</div>
+          <Btn variant="ghost" onClick={nextExhibit}>Go to the next exhibit</Btn>
+          <div style={{ marginTop: "auto", fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted, lineHeight: 1.6 }}>
+            A keeper flipped one switch. No mission at this exhibit can run until they flip it back.
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- MISSION BRIEF --- */
+  else if (screen === "brief") {
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow>Field mission · {log.length + 1} of {EXHIBITS.length}</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 25, lineHeight: 1.28, color: T.ink, fontWeight: 700 }}>
+            {t.mission}
+          </div>
+          {group === "kids" && age !== "adult" && (
+            <div style={{ background: T.mossPale, borderRadius: 12, padding: 14 }}>
+              <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: 1, color: T.moss, textTransform: "uppercase" }}>For the adult</div>
+              <div style={{ fontFamily: F.ui, fontSize: 13.5, color: T.ink, marginTop: 6, lineHeight: 1.5 }}>
+                Ask them: why do you think he uses the stick and not his hand?
+              </div>
+            </div>
+          )}
+          <div style={{ fontFamily: F.ui, fontSize: 13, color: T.inkMuted, lineHeight: 1.5 }}>
+            The screen goes dark for {window_} seconds. That is deliberate — put the phone down and watch.
+          </div>
+          <div style={{ marginTop: "auto" }}>
+            <Btn onClick={() => setScreen("observe")}>Start observing</Btn>
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- THE DIM (signature moment) --- */
+  else if (screen === "observe") {
+    const done = remaining <= 0;
+    view = (
+      <Phone dark>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: 28, textAlign: "center", gap: 22 }}>
+          <div style={{ fontFamily: F.mono, fontSize: 10.5, letterSpacing: 1.6, color: "#3E5A48", textTransform: "uppercase" }}>
+            Eyes up
+          </div>
+          <div style={{
+            fontFamily: F.mono, fontSize: 62, fontWeight: 300,
+            color: done ? T.signal : "#2E4736", lineHeight: 1, transition: "color .4s",
+          }}>
+            {String(Math.ceil(remaining)).padStart(2, "0")}
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 14, color: "#48684F", maxWidth: 250, lineHeight: 1.55 }}>
+            {done ? "Time. What did you see?" : "The screen is dark on purpose. Watch the animal, not this."}
+          </div>
+          <div style={{ width: "100%", maxWidth: 260, marginTop: 8 }}>
+            <Btn variant={done ? "signal" : "dark"} onClick={() => setScreen("report")}
+              style={{ textAlign: "center" }}>
+              {done ? "Report what I saw" : "Skip — report now"}
+            </Btn>
+          </div>
+          {!done && (
+            <div style={{ fontFamily: F.mono, fontSize: 10, color: "#2B4033", maxWidth: 240, lineHeight: 1.6 }}>
+              Skipping is allowed. It just will not earn a fieldwork credit.
+            </div>
+          )}
+        </div>
+      </Phone>
+    );
+  }
+
+  /* --- REPORT --- */
+  else if (screen === "report") {
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow>Log your observation</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 23, lineHeight: 1.28, color: T.ink, fontWeight: 700 }}>
+            {t.mission}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            {ex.options.map((o) => (
+              <Btn key={o.id} variant="option" onClick={() => { setReport(o.id); setScreen("unlock"); }}>
+                <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <span>{t.optLabel(o)}</span>
+                  <span style={{ fontFamily: F.mono, fontSize: 10, color: T.moss }}>{o.code}</span>
+                </span>
+              </Btn>
+            ))}
+          </div>
+          <div style={{ marginTop: "auto", fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted, lineHeight: 1.6 }}>
+            Observed {Math.round(observedMs / 1000)}s · every option is a valid record, including not seeing him
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- UNLOCK --- */
+  else if (screen === "unlock") {
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow color={T.signal}>Logged · you are the 214th today</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 23, lineHeight: 1.3, color: T.ink, fontWeight: 700 }}>
+            {t.finding}
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 15, color: T.ink, lineHeight: 1.6 }}>{t.science}</div>
+          <div style={{ fontFamily: F.ui, fontSize: 15, color: T.ink, lineHeight: 1.6 }}>{ex.angle[interest]}</div>
+          {receipts && (
+            <div style={{ background: T.mossPale, borderRadius: 10, padding: 12, fontFamily: F.mono, fontSize: 10.5, color: T.moss, lineHeight: 1.7 }}>
+              Sourced from corpus: {ex.ids.join(" · ")}
+              <div style={{ color: T.inkMuted, marginTop: 5 }}>Nothing on this screen was generated at runtime.</div>
+            </div>
+          )}
+          <div style={{ marginTop: "auto" }}>
+            <Btn onClick={() => setScreen("connect")}>Keep going</Btn>
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- CONNECT --- */
+  else if (screen === "connect") {
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow>The bit that sticks</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 21, lineHeight: 1.45, color: T.ink, fontStyle: "italic" }}>
+            {ex.connect}
+          </div>
+          <div style={{ marginTop: "auto" }}>
+            <Btn onClick={() => setScreen("act")}>One thing you can do</Btn>
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- CTA --- */
+  else if (screen === "act") {
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow color={T.signal}>Specific · feasible · today</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 21, lineHeight: 1.38, color: T.ink, fontWeight: 700 }}>
+            {ex.cta}
+          </div>
+          {ctaDone ? (
+            <div style={{ background: T.mossPale, borderRadius: 12, padding: 15, fontFamily: F.ui, fontSize: 14, color: T.ink, lineHeight: 1.55 }}>
+              {ex.ctaDone}
+            </div>
+          ) : (
+            <Btn variant="signal" onClick={() => setCtaDone(true)}>I'll do it</Btn>
+          )}
+          <div style={{ marginTop: "auto" }}>
+            <Btn variant={ctaDone ? "primary" : "ghost"} onClick={finishMission}>
+              {ctaDone ? "Finish this mission" : "Not this time"}
+            </Btn>
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- WRAP --- */
+  else if (screen === "wrap") {
+    const last = log[log.length - 1];
+    view = (
+      <Phone>
+        <Bar />
+        <Body>
+          <Eyebrow color={last?.qualified ? T.signal : T.inkMuted}>
+            {last?.qualified ? "Fieldwork credit earned" : "Logged — no credit"}
+          </Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 24, lineHeight: 1.28, color: T.ink, fontWeight: 700 }}>
+            {last?.qualified
+              ? `${credits} credit${credits === 1 ? "" : "s"}. Four earns a feeding session.`
+              : "That one did not meet the 30-second gate."}
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 14, color: T.inkMuted, lineHeight: 1.55 }}>
+            {last?.qualified
+              ? "Credits come from depth, not speed. Rushing earns nothing."
+              : "Nothing is lost — the observation is still in the log. Credits just need a real look."}
+          </div>
+          <div style={{ background: "#F4F7F2", borderRadius: 12, padding: 14, fontFamily: F.mono, fontSize: 11, color: T.inkMuted, lineHeight: 1.8 }}>
+            {last?.exhibit} · {last?.code} · {last?.seconds}s · {last?.time}
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 15, color: T.ink, lineHeight: 1.55 }}>{ex.next}</div>
+          <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 9 }}>
+            <Btn onClick={nextExhibit}>
+              {exIdx < EXHIBITS.length - 1 ? "Next exhibit" : "See my field journal"}
+            </Btn>
+            {exIdx < EXHIBITS.length - 1 && (
+              <Btn variant="ghost" small onClick={() => setScreen("journal")}>End here and see my journal</Btn>
+            )}
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* --- FIELD JOURNAL --- */
+  else if (screen === "journal") {
+    view = (
+      <Phone>
+        <div style={{ background: T.canopy, padding: "24px 22px", color: "#EFF4ED" }}>
+          <Eyebrow color={T.signal}>Field journal · {new Date().toLocaleDateString()}</Eyebrow>
+          <div style={{ fontFamily: F.display, fontSize: 26, fontWeight: 700, lineHeight: 1.2 }}>
+            {log.length} observation{log.length === 1 ? "" : "s"} logged
+          </div>
+          <div style={{ fontFamily: F.ui, fontSize: 13, color: "#A9BFB0", marginTop: 8 }}>
+            {credits} fieldwork credit{credits === 1 ? "" : "s"} · {eyesUpPct}% of your session spent eyes-up
+          </div>
+        </div>
+        <Body>
+          {log.length === 0 && (
+            <div style={{ fontFamily: F.ui, fontSize: 14, color: T.inkMuted }}>
+              Nothing logged yet. Tap a seed panel to start.
+            </div>
+          )}
+          {log.map((l, i) => (
+            <div key={i} style={{ borderBottom: `1px solid ${T.line}`, paddingBottom: 11 }}>
+              <div style={{ fontFamily: F.ui, fontSize: 14.5, color: T.ink, fontWeight: 600 }}>
+                {l.animal} — {l.label.toLowerCase()}
+              </div>
+              <div style={{ fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted, marginTop: 4 }}>
+                {l.exhibit} · {l.code} · {l.seconds}s · {l.time}{l.qualified ? " · credited" : ""}
+              </div>
+            </div>
+          ))}
+          {guestType === "day" && log.length > 0 && (
+            <div style={{ background: T.mossPale, borderRadius: 12, padding: 15, fontFamily: F.ui, fontSize: 13.5, color: T.ink, lineHeight: 1.55 }}>
+              Your journal is saved for 7 days. Members keep theirs — and pick up where they left off next visit.
+              <div style={{ fontFamily: F.mono, fontSize: 10.5, color: T.moss, marginTop: 8 }}>
+                Continuity, never loss. No expiry countdown.
+              </div>
+            </div>
+          )}
+          <div style={{ marginTop: "auto" }}>
+            <Btn variant="ghost" onClick={reset}>Run it again</Btn>
+          </div>
+        </Body>
+      </Phone>
+    );
+  }
+
+  /* ---------------- facilitator panel ---------------- */
+
+  const Row = ({ label, children }) => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: 1.1, textTransform: "uppercase", color: T.inkMuted, marginBottom: 7 }}>{label}</div>
+      {children}
+    </div>
+  );
+
+  const Chip = ({ on, onClick, children }) => (
+    <button className="ws-btn" onClick={onClick} style={{
+      fontFamily: F.ui, fontSize: 12, fontWeight: 600, padding: "6px 10px", borderRadius: 8,
+      border: `1px solid ${on ? T.canopy : T.line}`, background: on ? T.canopy : T.surface,
+      color: on ? "#F2F6F0" : T.inkMuted, cursor: "pointer", marginRight: 6, marginBottom: 6,
+    }}>{children}</button>
+  );
+
+  const panel = (
+    <div style={{
+      width: "100%", maxWidth: 330, background: T.surface, borderRadius: 18,
+      border: `1px solid ${T.line}`, padding: 20, alignSelf: "flex-start",
+    }}>
+      <div style={{ fontFamily: F.display, fontSize: 17, fontWeight: 700, color: T.ink, marginBottom: 3 }}>
+        Facilitator controls
+      </div>
+      <div style={{ fontFamily: F.ui, fontSize: 12, color: T.inkMuted, marginBottom: 18, lineHeight: 1.5 }}>
+        Not guest-facing. Use this to switch lenses mid-test and watch the same fact change shape.
+      </div>
+
+      <Row label="Age band">
+        {AGES.map((a) => <Chip key={a.id} on={age === a.id} onClick={() => setAge(a.id)}>{a.label}</Chip>)}
+      </Row>
+      <Row label="Interest lens">
+        {INTERESTS.map((i) => <Chip key={i.id} on={interest === i.id} onClick={() => setInterest(i.id)}>{i.label}</Chip>)}
+      </Row>
+      <Row label="Language">
+        <Chip on={lang === "en"} onClick={() => setLang("en")}>EN</Chip>
+        <Chip on={lang === "zh"} onClick={() => setLang("zh")}>中文</Chip>
+        <div style={{ fontFamily: F.mono, fontSize: 9.5, color: T.inkMuted, marginTop: 4, lineHeight: 1.6 }}>
+          中文 variants cached for OU2 only in this prototype.
+        </div>
+      </Row>
+      <Row label="Observation window">
+        <Chip on={window_ === 30} onClick={() => setWindow_(30)}>30s — real</Chip>
+        <Chip on={window_ === 8} onClick={() => setWindow_(8)}>8s — demo</Chip>
+      </Row>
+      <Row label="Toggles">
+        <Chip on={quiet} onClick={() => setQuiet(!quiet)}>Quiet mode</Chip>
+        <Chip on={receipts} onClick={() => setReceipts(!receipts)}>Show corpus IDs</Chip>
+      </Row>
+
+      <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 15, marginTop: 4 }}>
+        <div style={{ fontFamily: F.mono, fontSize: 10, letterSpacing: 1.1, textTransform: "uppercase", color: T.inkMuted, marginBottom: 10 }}>
+          Live metrics
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {[
+            ["Eyes-up", `${eyesUpPct}%`],
+            ["Session", fmt(sessionMs)],
+            ["Missions", `${log.length}`],
+            ["Credits", `${credits}`],
+          ].map(([k, v]) => (
+            <div key={k}>
+              <div style={{ fontFamily: F.display, fontSize: 25, fontWeight: 700, color: T.canopy, lineHeight: 1 }}>{v}</div>
+              <div style={{ fontFamily: F.mono, fontSize: 9.5, color: T.inkMuted, marginTop: 4, textTransform: "uppercase", letterSpacing: .8 }}>{k}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontFamily: F.ui, fontSize: 11.5, color: T.inkMuted, marginTop: 14, lineHeight: 1.55 }}>
+          Eyes-up is time with the screen dimmed, over total session time. Target is 50%.
+        </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 15, marginTop: 15 }}>
+        <Btn variant="ghost" small onClick={reset}>Reset session</Btn>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ background: T.shell, minHeight: "100vh", padding: "26px 18px 40px", fontFamily: F.ui, color: T.ink }}>
+      <style>{`
+        .ws-btn:focus-visible { outline: 2px solid ${T.signal}; outline-offset: 2px; }
+        .ws-btn:hover:not(:disabled) { transform: translateY(-1px); }
+        @media (prefers-reduced-motion: reduce) { .ws-btn { transition: none !important; transform: none !important; } }
+      `}</style>
+
+      <div style={{ maxWidth: 790, margin: "0 auto 22px" }}>
+        <div style={{ fontFamily: F.mono, fontSize: 10.5, letterSpacing: 2, textTransform: "uppercase", color: T.moss }}>
+          Prototype · not for guest release
+        </div>
+        <div style={{ fontFamily: F.display, fontSize: 30, fontWeight: 700, marginTop: 6, letterSpacing: -.4 }}>
+          WILDSIGHT
+        </div>
+        <div style={{ fontSize: 14, color: T.inkMuted, marginTop: 6, maxWidth: 560, lineHeight: 1.55 }}>
+          Walk the full 90-second loop as a guest. Switch lenses in the panel to see the same
+          approved fact re-framed for a different person.
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 790, margin: "0 auto", display: "flex", gap: 26, flexWrap: "wrap", justifyContent: "center", alignItems: "flex-start" }}>
+        {view}
+        <div style={{ flex: "1 1 300px", minWidth: 280, maxWidth: 330 }}>{panel}</div>
+      </div>
+
+      <div style={{ maxWidth: 790, margin: "26px auto 0", fontFamily: F.mono, fontSize: 10.5, color: T.inkMuted, lineHeight: 1.9, borderTop: `1px solid ${T.line}`, paddingTop: 16 }}>
+        Simulated here: NFC and RFID taps, the membership lookup, the "214th today" counter.<br />
+        Real here: the dim, the 30-second quality gate, lens resolution, the observation log, eyes-up accounting.<br />
+        Absent by design: cameras, location, accounts, any stored free text from a child.
+      </div>
+    </div>
+  );
+}
